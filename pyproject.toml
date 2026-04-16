@@ -37,7 +37,9 @@ dev = [
     "jupyter>=1.1.1",
     "notebook>=7.5.1",
     "pytest>=9.0.2",
+    "setuptools>=82.0.1",
     "twine>=6.2.0",
+    "wheel>=0.46.3",
 ]
 
 [build-system]
@@ -52,4 +54,3 @@ where = ["src"]
 
 [project.scripts]
 mtc = "maldi_tof_classifier.cli.cli:main"
--

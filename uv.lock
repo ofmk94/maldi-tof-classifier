@@ -1861,7 +1861,9 @@ dev = [
     { name = "jupyter" },
     { name = "notebook" },
     { name = "pytest" },
+    { name = "setuptools" },
     { name = "twine" },
+    { name = "wheel" },
 ]
 
 [package.metadata]
@@ -1893,7 +1895,9 @@ dev = [
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "notebook", specifier = ">=7.5.1" },
     { name = "pytest", specifier = ">=9.0.2" },
+    { name = "setuptools", specifier = ">=82.0.1" },
     { name = "twine", specifier = ">=6.2.0" },
+    { name = "wheel", specifier = ">=0.46.3" },
 ]
 
 [[package]]
