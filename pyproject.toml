@@ -1,7 +1,7 @@
 [project]
 name = "maldi-tof-classifier"
-version = "0.3.1"
-description = "The maldi_tof_classifier package offers a CLI and Python 3 API for machine learning based classification of MALDI TOF spectra as measured by a Shimadzu 8300 MALDI-TOF mass spectrometer."
+version = "0.3.2"
+description = "The maldi_tof_classifier package offers a CLI and Python 3 API for machine learning based classification of MALDI TOF spectra as measured by a Shimadzu 8030 MALDI-TOF mass spectrometer."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
