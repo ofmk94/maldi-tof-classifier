@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# comment files
+*.txt
+
+# data
+cli_files/
+data_predict/
+data_train/
+data_predict_txt/
+data_train_txt/
+data_predict_csv/
+data_train_csv/
