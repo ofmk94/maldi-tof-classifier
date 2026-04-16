@@ -1,6 +1,6 @@
 # maldi-tof-classifier
 
-Version: 0.1.0
+Version: 0.3.1
 
 The **maldi-tof-classifier** package provides functionality for:
 - Reading MALDI-TOF spectra
