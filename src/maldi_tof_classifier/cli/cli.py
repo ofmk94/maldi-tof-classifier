@@ -50,6 +50,10 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from sklearn.decomposition import PCA, TruncatedSVD
 
+# For OPLS-DA
+from sklearn.pipeline import Pipeline as SKLPipeline
+from sklearn.multiclass import OneVsRestClassifier
+
 import joblib
 
 from datetime import datetime
@@ -138,7 +142,10 @@ def train():
 
         peaks_dfs, class_labels = extractor.extract_train_data(TRAIN_DIR)
         X_train, X_test, y_train, y_test = train_test_split(
-            peaks_dfs, class_labels, test_size=config["test_size"]
+            peaks_dfs,
+            class_labels,
+            test_size=config["test_size"],
+            stratify=class_labels
         )
 
         X_train = extractor.transform_train_data(X_train)
@@ -149,7 +156,10 @@ def train():
         spectra, class_labels, spots = extractor.extract_train_data(TRAIN_DIR)
 
         X_train, X_test, y_train, y_test = train_test_split(
-            spectra, class_labels, test_size=config["test_size"]
+            spectra,
+            class_labels,
+            test_size=config["test_size"],
+            stratify=class_labels
         )
     else:
         typer.echo(
@@ -226,7 +236,7 @@ def train():
         "LinearDiscriminantAnalysis": LinearDiscriminantAnalysis,
         "QuadraticDiscriminantAnalysis": QuadraticDiscriminantAnalysis,
         "PLS-DA": PLSRegression,
-        "OPLS-DA": LogisticRegression,
+        "OPLS-DA": None, # Separately defined
         "SVC": SVC,
         "RandomForestClassifier": RandomForestClassifier,
         "XGBClassifier": XGBClassifier,
@@ -248,26 +258,30 @@ def train():
                          """
         )
         raise typer.Exit(1)
-
     # Initialize pipeline.
-    pipeline = generate_pipeline(
-        classifier_cls=classifier_cls,
-        classifier_params=config["classifier_params"],
-        scaler_cls=scaler_cls,
-        dim_reducer_cls=dim_reducer_cls,
-        n_components=int(config["n_components"]),
-    )
+    if config["classifier_cls"] == "OPLS-DA":
+        # OPLS-DA pipeline.
+        opls_da = SKLPipeline([
+                ("opls", OPLS()),
+                ("pls", PLSRegression())
+        ])
+        # Set classifier_params for OPLS-DA.
+        opls_da.set_params(**config["classifier_params"] or {})
+        pipeline = OneVsRestClassifier(opls_da)
+    else:
+        # All other model pipelines.
+        pipeline = generate_pipeline(
+            classifier_cls=classifier_cls,
+            classifier_params=config["classifier_params"],
+            scaler_cls=scaler_cls,
+            dim_reducer_cls=dim_reducer_cls,
+            n_components=int(config["n_components"]),
+        )
 
     # Encoding y_train for PLS-DA.
     if config["classifier_cls"] == "PLS-DA":
         ohe = OneHotEncoder(sparse_output=False)
         y_train = ohe.fit_transform(y_train.reshape(-1, 1))
-
-    # Encoding X_train for OPLS-DA.
-    if config["classifier_cls"] == "OPLS-DA":
-        opls = OPLS()
-        X_train = opls.fit_transform(X_train, y_train)
-        X_test = opls.transform(X_test)
 
     # Training pipeline.
     pipeline.fit(X_train, y_train)
@@ -282,9 +296,9 @@ def train():
     # Compute performance scores.
     performance_scores = {
         "ACC: ": accuracy_score(y_test, y_pred),
-        "PREC: ": precision_score(y_test, y_pred, average="weighted"),
-        "REC: ": recall_score(y_test, y_pred, average="weighted"),
-        "F1: ": f1_score(y_test, y_pred, average="weighted"),
+        "PREC: ": precision_score(y_test, y_pred, average="macro"),
+        "REC: ": recall_score(y_test, y_pred, average="macro"),
+        "F1: ": f1_score(y_test, y_pred, average="macro"),
         "CONF. MATRIX: \n": confusion_matrix(y_test, y_pred),
     }
 
@@ -302,10 +316,6 @@ def train():
         "pipeline": pipeline,
         "le": le
     }
-
-    # Pass OPLS transform to pipeline for OPLS-DA.
-    if config["classifier_cls"] == "OPLS-DA":
-        model_components["opls"] = opls
 
     # Save model.
     joblib.dump(model_components, MODEL_SAVEFILE)
@@ -355,10 +365,6 @@ def predict():
     # Mapping peaks to consensus masses.
     if isinstance(extractor, PeakExtractor):
         X = extractor.transform_predict_data(X)
-
-    # Perform OPLS transformation for OPLS-DA.
-    if "opls" in model:
-        X = model["opls"].transform(X)
 
     # Compute predictions and decoded labels.
     predictions = pipeline.predict(X)

@@ -1,6 +1,6 @@
 # maldi-tof-classifier
 
-Version: 0.3.2
+Version: 0.3.3
 
 The **maldi-tof-classifier** package provides functionality for:
 - Reading MALDI-TOF spectra
@@ -90,9 +90,10 @@ The following files are created inside `cli_files` during usage:
     cli_files/pipeline.joblib
         created once the model with the classification pipeline is trained.
 
-    cli_files/training_performance.csv
-        test set performance of the pipeline on classification
-        includes accuracy, precision, recall, f1-score, confusion matrix.
+    cli_files/training_performance.txt
+        test-set performance of the trained classification pipeline
+        includes accuracy, macro-averaged precision, macro-averaged recall,
+        macro-averaged F1 score, and the confusion matrix.
 
     cli_files/predictions.csv
         predictions on data_predict data.
@@ -227,7 +228,8 @@ Available options:
 - xgboost model:
   `XGBClassifier`
 - special option:
-  `OPLS-DA`, implemented via `LogisticRegression`
+  `OPLS-DA`, implemented using `pyopls.OPLS`, `PLSRegression`, and
+  `OneVsRestClassifier` for multiclass classification.
 
 Default:
 
@@ -241,23 +243,45 @@ Default:
 
     classifier_params: null
 
-These parameters are passed directly to the selected classifier constructor. Only parameters valid for the selected classifier should be used here.
+These parameters are passed to the selected classifier. Only parameters valid for the selected classifier should be used here.
 
 Examples:
 
-    classifier_params:
-        n_estimators: 200
-        max_depth: 10
+```
+classifier_params:
+    n_estimators: 200
+    max_depth: 10
+```
 
 or:
 
-    classifier_params:
-        C: 1.0
-        max_iter: 1000
+```
+classifier_params:
+    C: 1.0
+    max_iter: 1000
+```
 
-Refer to the documentation of `scikit-learn` or `xgboost` for the full list of supported constructor arguments.
+For `OPLS-DA`, use pipeline prefixes:
 
----
+* `opls__` for `OPLS`
+* `pls__` for `PLSRegression`
+
+Example:
+
+```yaml
+classifier_cls: "OPLS-DA"
+classifier_params:
+  opls__n_components: 1
+  pls__n_components: 2
+```
+For `OPLS-DA`, the separate `scaler_cls`, `dim_reducer_cls`, and
+top-level `n_components` settings are not applied. OPLS and PLS
+components can be configured through `opls__n_components` and
+`pls__n_components` in `classifier_params`.
+
+Refer to the documentation of `scikit-learn`, `xgboost`, or `pyopls` for the full list of supported parameters.
+
+
 
 ## 1.8 Train/test split and balancing
 
@@ -270,9 +294,9 @@ Type:
 
 Default:
 
-    test_size: 0.2
+    test_size: 0.25
 
-### 1.8.2 oversample
+### 1.8.2 oversampling
 
 Whether simple oversampling should be performed for balancing training classes.
 
@@ -281,7 +305,7 @@ Type:
 
 Default:
 
-    oversample: true
+    oversampling: true
 
 ---
 
@@ -418,11 +442,33 @@ Alternative: full spectra using `FullSpectraExtractor`
 
 ---
 
+---
+
+### OPLS-DA
+
+Multiclass OPLS-DA is implemented using a one-vs-rest strategy.
+Each binary estimator applies an OPLS transformation followed by
+PLS regression.
+
+    from pyopls import OPLS
+    from sklearn.cross_decomposition import PLSRegression
+    from sklearn.multiclass import OneVsRestClassifier
+    from sklearn.pipeline import Pipeline
+
+    classifier = OneVsRestClassifier(
+        Pipeline([
+            ("opls", OPLS()),
+            ("pls", PLSRegression()),
+        ])
+    )
+
+    classifier.fit(X_train, y_train)
+
+    y_pred = classifier.predict(X_test)
+
 ## 2.8 Neural network models
 
 Available in `maldi_tof_classifier.nn`:
-
-- `CNN1DClassifier`
 - `LSTMClassifier`
 
 For neural networks, a train/validation/test split and one-hot encoding is typically used.
@@ -432,28 +478,48 @@ For neural networks, a train/validation/test split and one-hot encoding is typic
     from sklearn.model_selection import train_test_split
 
     X_train, X_val_test, y_train, y_val_test = train_test_split(
-        spectra, class_labels, test_size=0.3
+        spectra,
+        class_labels,
+        test_size=0.3,
+        stratify=class_labels
     )
 
     X_val, X_test, y_val, y_test = train_test_split(
-        X_val_test, y_val_test, test_size=0.333
+        X_val_test,
+        y_val_test,
+        test_size=0.333,
+        stratify=class_labels
     )
+
+### Label encoding
+
+```
+from sklearn.preprocessing import LabelEncoder
+
+le = LabelEncoder()
+
+y_train = le.fit_transform(y_train)
+y_val = le.transform(y_val)
+y_test = le.transform(y_test)
+```
 
 ### One-hot encoding
 
-    from tensorflow.keras.utils import to_categorical
+```
+from tensorflow.keras.utils import to_categorical
 
-    n_classes = y_train.max() + 1
+n_classes = len(le.classes_)
 
-    y_train = to_categorical(y_train, n_classes)
-    y_val = to_categorical(y_val, n_classes)
-    y_test = to_categorical(y_test, n_classes)
+y_train = to_categorical(y_train, n_classes)
+y_val = to_categorical(y_val, n_classes)
+y_test = to_categorical(y_test, n_classes)
+```
 
 ### Example
 
-    from maldi_tof_classifier.nn import CNN1DClassifier
+    from maldi_tof_classifier.nn import LSTMClassifier
 
-    model = CNN1DClassifier(X_train, y_train)
+    model = LSTMClassifier(X_train, y_train)
 
     model.fit(
         X_train,
@@ -501,7 +567,7 @@ Steps 2.5–2.7 (Step 4–6) can be combined into a pipeline:
     from sklearn.decomposition import PCA
     from sklearn.ensemble import RandomForestClassifier
 
-    from maldi_tof_classifier.core import generate_pipeline
+    from maldi_tof_classifier.pipelines import generate_pipeline
 
     pipeline = generate_pipeline(
         classifier_cls=RandomForestClassifier,
@@ -549,13 +615,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-
+## Disclaimer
 ## Disclaimer
 
-This README was written based on the original draft and revised into English Markdown format with assistance from ChatGPT (Version 5.3).
+This README was written based on the original draft, revised into English Markdown format, and completed with additional content with assistance from ChatGPT versions 5.3, 5.5, and 5.6.
 
 No liability is assumed for the provided software or for the contents of this README.
 
 ---
 
-_Last edited: April 16th, 2026_
+*Last edited: July 26th, 2026*
+
+No liability is assumed for the provided software or for the contents of this README.
+
+---
+
+*Last edited: July 26th, 2026*
+
